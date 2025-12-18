@@ -51,6 +51,7 @@ jobs:
       - name: Setup Snyk CLI
         if: steps.check-token.outputs.token_available == 'true'
         uses: snyk/actions/setup@master
+        continue-on-error: true
 
       - name: Run Snyk Open Source scan
         if: steps.check-token.outputs.token_available == 'true'
