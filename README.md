@@ -70,6 +70,8 @@ Generates a table of contents for all ADRs in Markdown format.
 - ✅ Configurable ADR directory
 - ✅ Auto-open ADRs in editor (via VISUAL/EDITOR env vars)
 - ✅ Proper filename slugification
+- 🔒 Security scanning with Snyk integration
+- 🛡️ Automated vulnerability detection
 
 ## ADR Template
 

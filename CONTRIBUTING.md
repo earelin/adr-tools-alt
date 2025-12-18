@@ -59,6 +59,12 @@ We maintain high code quality standards. Before submitting:
    cargo doc --no-deps
    ```
 
+5. **Security scan (if Snyk CLI installed):**
+   ```bash
+   snyk test
+   snyk code test
+   ```
+
 ### Commit Guidelines
 - Use conventional commit format: `type(scope): description`
 - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`

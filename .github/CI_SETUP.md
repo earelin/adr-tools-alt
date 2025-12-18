@@ -98,6 +98,29 @@ This document describes the comprehensive CI/CD pipeline implemented for the adr
 - Binary size tracking
 - Performance regression detection
 
+### 5. Snyk Security Scanning (`.github/workflows/snyk.yml`)
+
+**Triggers:**
+- Push to `trunk` branch
+- Pull requests targeting `trunk`  
+- Weekly schedule (Mondays at 08:00 UTC)
+
+**Jobs:**
+
+#### Snyk Open Source
+- Dependency vulnerability scanning
+- Cargo.toml and Cargo.lock analysis
+- SARIF results upload to GitHub Security
+
+#### Snyk Code Analysis
+- Static code security analysis
+- Rust-specific security pattern detection
+- Security hotspot identification
+
+#### Dependency Submission
+- GitHub dependency graph submission
+- Automated dependency review on PRs
+
 ## Configuration Files
 
 ### Rust Toolchain Configuration
@@ -127,10 +150,14 @@ This document describes the comprehensive CI/CD pipeline implemented for the adr
 
 ## Security Features
 
-- **Dependency Auditing:** Weekly automated scans
+- **Dependency Auditing:** Weekly automated scans with cargo-audit
+- **Snyk Vulnerability Scanning:** Comprehensive dependency and code analysis
+- **GitHub Security Integration:** Results in Security tab and Code Scanning alerts
+- **SARIF Upload:** Standardized security result format
 - **MSRV Enforcement:** Ensures compatibility with Rust 1.70.0+
 - **Cargo.lock Validation:** Dependency integrity checks
 - **Supply Chain Security:** Multi-platform build verification
+- **Automated Security Monitoring:** Continuous monitoring via Snyk dashboard
 
 ## Quality Gates
 
@@ -148,8 +175,24 @@ All PRs must pass:
 
 For full functionality, the following GitHub secrets must be configured:
 
+### Required Secrets
 - `CARGO_REGISTRY_TOKEN`: For crates.io publishing
-- `CODECOV_TOKEN`: For code coverage reporting (optional)
+- `SNYK_TOKEN`: For Snyk security scanning
+
+### Optional Secrets
+- `CODECOV_TOKEN`: For code coverage reporting
+- `SNYK_ORG_ID`: For organization-specific Snyk scans
+
+### Setup Instructions
+
+1. **SNYK_TOKEN**: 
+   - Create account at [snyk.io](https://snyk.io)
+   - Go to Account Settings → API Token
+   - Copy token to GitHub Secrets
+
+2. **SNYK_ORG_ID** (Optional):
+   - Find in Snyk dashboard URL or settings
+   - Allows organization-specific scanning and monitoring
 
 ## Performance Optimizations
 

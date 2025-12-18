@@ -31,6 +31,14 @@ cargo build --release
 cargo llvm-cov --all-features --lcov --output-path lcov.info
 # or use the script
 ./scripts/coverage.sh
+
+# Run security scans
+./scripts/security-scan.sh
+
+# Individual security tools (if installed)
+cargo audit              # Dependency vulnerabilities
+snyk test               # Snyk open source scan
+snyk code test          # Snyk code analysis
 ```
 
 ## CLI Usage Examples
@@ -99,6 +107,38 @@ Run tests with `cargo test`. Tests cover:
 - `anyhow`: Error handling
 - `regex`: Pattern matching for filenames
 - `serde`: Serialization (for future features)
+
+## Security
+
+This project integrates comprehensive security scanning:
+
+### Automated Security (CI)
+- **Snyk Integration**: Dependency and code vulnerability scanning
+- **cargo-audit**: Rust security advisory database checking  
+- **GitHub Security**: Results integrated into Security tab
+- **SARIF Upload**: Standardized security reporting format
+
+### Local Security Testing
+```bash
+# Run all security scans
+./scripts/security-scan.sh
+
+# Individual tools
+cargo audit                    # Dependency vulnerabilities
+snyk test                     # Dependency scanning
+snyk code test               # Static code analysis
+```
+
+### Security Configuration
+- `.snyk` - Snyk policy and configuration
+- Security thresholds: Medium+ for most scans
+- Automatic security monitoring via Snyk dashboard
+- Weekly automated security reviews
+
+### Setup Requirements
+1. Add `SNYK_TOKEN` to GitHub repository secrets
+2. Optionally add `SNYK_ORG_ID` for organization scans  
+3. See `.github/SNYK_SETUP.md` for detailed setup instructions
 
 ## License
 

@@ -1,0 +1,76 @@
+# Snyk (https://snyk.io) policy file, read docs: https://snyk.io/docs/policy-file/
+version: v1.0.0
+
+# Language settings for Rust
+language-settings:
+  rust:
+    # Skip dev dependencies for production scans (recommended for CLI tools)
+    dev: false
+    # Set package manager
+    packageManager: cargo
+
+# Patch settings - automatically applied patches
+patch: {}
+
+# Ignore specific vulnerabilities
+# Use this section to ignore known false positives or accepted risks
+# Each entry should have a reason and expiry date
+ignore: {}
+
+# Manual patches for vulnerabilities
+patches: {}
+
+# Exclude paths from scanning
+exclude:
+  global:
+    # Build artifacts and caches
+    - "target/**"
+    - "**/target/**"
+    - ".cargo/**"
+    
+    # Test files and directories
+    - "tests/**"
+    - "**/tests/**"
+    - "test_*/**"
+    - "**/test_*/**"
+    
+    # Temporary and log files
+    - "*.tmp"
+    - "*.temp"
+    - "*.log"
+    - "*.cache"
+    - "lcov.info"
+    - "coverage-report/**"
+    
+    # Documentation and examples
+    - "doc/**"
+    - "docs/**"
+    - "examples/**"
+    - "*.md"
+    - "CHANGELOG*"
+    - "README*"
+    - "LICENSE*"
+    
+    # Development and CI configuration
+    - ".git/**"
+    - ".github/**"
+    - ".vscode/**"
+    - ".idea/**"
+    - "scripts/**"
+    - "*.toml"
+    - "*.yml"
+    - "*.yaml"
+    
+    # Keep important security configs
+    - "!.snyk"
+    - "!Cargo.toml"
+    - "!Cargo.lock"
+
+# Threshold settings for different scan types
+severity-threshold:
+  # Fail CI on high or critical vulnerabilities
+  oss: high
+  # Be more permissive with code analysis during development
+  code: high
+  # Container scans should catch medium and above
+  container: medium
