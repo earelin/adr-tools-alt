@@ -70,6 +70,8 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,12 +90,22 @@ jobs:
       - name: Run security audit
         run: cargo audit
 
-      - name: Quick Snyk scan (if token available)
-        if: ${{ secrets.SNYK_TOKEN != '' }}
+      - name: Check if Snyk token is available
+        id: snyk-check
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            echo "snyk_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "snyk_available=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ SNYK_TOKEN not available, skipping quick Snyk scan"
+          fi
+        
+      - name: Setup Snyk (if available)
+        if: steps.snyk-check.outputs.snyk_available == 'true'
         uses: snyk/actions/setup@master
         
-      - name: Snyk Open Source test
-        if: ${{ secrets.SNYK_TOKEN != '' }}
+      - name: Quick Snyk scan
+        if: steps.snyk-check.outputs.snyk_available == 'true'
         run: |
           snyk test --severity-threshold=high
         continue-on-error: true

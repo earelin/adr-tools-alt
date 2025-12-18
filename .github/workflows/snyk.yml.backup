@@ -1,0 +1,151 @@
+name: Snyk Security
+
+on:
+  push:
+    branches: [ trunk ]
+  pull_request:
+    branches: [ trunk ]
+  schedule:
+    # Run weekly on Mondays at 08:00 UTC
+    - cron: '0 8 * * 1'
+
+env:
+  SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+jobs:
+  snyk-open-source:
+    name: Snyk Open Source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build project (needed for dependency resolution)
+        run: cargo build
+
+      - name: Check if Snyk token is available
+        id: snyk-check
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            echo "snyk_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "snyk_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ SNYK_TOKEN not available, skipping Snyk scans"
+          fi
+
+      - name: Setup Snyk
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        uses: snyk/actions/setup@master
+
+      - name: Snyk Open Source monitor
+        if: steps.snyk-check.outputs.snyk_available == 'true' && github.ref == 'refs/heads/trunk'
+        run: |
+          if [ -n "${{ secrets.SNYK_ORG_ID }}" ]; then
+            snyk monitor --org=${{ secrets.SNYK_ORG_ID }} --project-name=adr-tools-alt
+          else
+            snyk monitor --project-name=adr-tools-alt
+          fi
+        continue-on-error: true
+
+      - name: Snyk Open Source test
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        run: |
+          if [ -n "${{ secrets.SNYK_ORG_ID }}" ]; then
+            snyk test \
+              --severity-threshold=medium \
+              --org=${{ secrets.SNYK_ORG_ID }} \
+              --project-name=adr-tools-alt \
+              --sarif-file-output=snyk-open-source.sarif
+          else
+            snyk test \
+              --severity-threshold=medium \
+              --project-name=adr-tools-alt \
+              --sarif-file-output=snyk-open-source.sarif
+          fi
+        continue-on-error: true
+
+      - name: Upload Snyk results to GitHub Code Scanning
+        if: steps.snyk-check.outputs.snyk_available == 'true' && always() && hashFiles('snyk-open-source.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-open-source.sarif
+
+  snyk-code:
+    name: Snyk Code Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if Snyk token is available
+        id: snyk-check
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            echo "snyk_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "snyk_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ SNYK_TOKEN not available, skipping Snyk Code analysis"
+          fi
+
+      - name: Setup Snyk
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        uses: snyk/actions/setup@master
+
+      - name: Snyk Code test
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        run: |
+          if [ -n "${{ secrets.SNYK_ORG_ID }}" ]; then
+            snyk code test \
+              --sarif-file-output=snyk-code.sarif \
+              --severity-threshold=medium \
+              --org=${{ secrets.SNYK_ORG_ID }}
+          else
+            snyk code test \
+              --sarif-file-output=snyk-code.sarif \
+              --severity-threshold=medium
+          fi
+        continue-on-error: true
+
+      - name: Upload Snyk Code results to GitHub Code Scanning
+        if: steps.snyk-check.outputs.snyk_available == 'true' && always() && hashFiles('snyk-code.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
+
+  dependency-submission:
+    name: Submit Dependencies to GitHub
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/trunk'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Generate dependency tree
+        run: |
+          # Generate Cargo.lock if it doesn't exist
+          cargo generate-lockfile
+          
+          # Submit dependency information
+          cargo tree --format "{p}" > dependencies.txt
+
+      - name: Submit dependencies to GitHub
+        uses: actions/dependency-review-action@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fail-on-severity: 'moderate'
