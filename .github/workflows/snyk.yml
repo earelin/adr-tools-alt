@@ -59,7 +59,6 @@ jobs:
           echo "🔍 Running Snyk dependency scan..."
           snyk test --all-projects \
             --severity-threshold=medium \
-            --project-name=adr-tools-alt \
             --target-reference="${GITHUB_REF}" || {
             echo "⚠️ Snyk scan found issues or failed"
             exit 0
@@ -81,7 +80,7 @@ jobs:
         if: steps.check-token.outputs.token_available == 'true' && github.ref == 'refs/heads/trunk'
         run: |
           echo "📊 Adding project to Snyk monitoring..."
-          snyk monitor --project-name=adr-tools-alt || {
+          snyk monitor --all-projects || {
             echo "⚠️ Snyk monitor failed (this is usually not critical)"
             exit 0
           }
