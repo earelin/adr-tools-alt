@@ -1,4 +1,4 @@
-name: Snyk Security (Simple)
+name: Snyk Security
 
 on:
   push:
@@ -6,15 +6,20 @@ on:
   pull_request:
     branches: [ trunk ]
   schedule:
-    # Run weekly on Mondays at 08:00 UTC
+    # Run weekly on Mondays at 08:00 UTC (after SBOM generation on Sunday)
     - cron: '0 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      include_sbom_scan:
+        description: 'Include SBOM-based scanning'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
   snyk-scan:
     name: Snyk Security Scan
     runs-on: ubuntu-latest
-    # Only run if SNYK_TOKEN is available
-    if: ${{ github.event_name == 'schedule' || github.repository_owner != 'github' }}
     
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -59,7 +64,8 @@ jobs:
           echo "🔍 Running Snyk dependency scan..."
           snyk test --all-projects \
             --severity-threshold=medium \
-            --target-reference="${GITHUB_REF}" || {
+            --target-reference="${GITHUB_REF}" \
+            --sarif-file-output=snyk-oss.sarif || {
             echo "⚠️ Snyk scan found issues or failed"
             exit 0
           }
@@ -70,10 +76,53 @@ jobs:
         run: |
           echo "🔍 Running Snyk code analysis..."
           snyk code test \
-            --severity-threshold=medium || {
+            --severity-threshold=medium \
+            --sarif-file-output=snyk-code.sarif || {
             echo "⚠️ Snyk code analysis found issues or failed"
             exit 0
           }
+        continue-on-error: true
+
+      - name: Generate quick SBOM for scanning
+        if: steps.check-token.outputs.token_available == 'true' && (github.event.inputs.include_sbom_scan != 'false')
+        run: |
+          echo "📦 Generating SBOM for Snyk scanning..."
+          
+          # Install cargo-cyclonedx if not available
+          if ! command -v cargo-cyclonedx &> /dev/null; then
+            cargo install cargo-cyclonedx
+          fi
+          
+          # Generate CycloneDX SBOM
+          cargo cyclonedx --format json --output-dir .
+          mv bom.json snyk-sbom.json
+        continue-on-error: true
+
+      - name: Scan SBOM with Snyk
+        if: steps.check-token.outputs.token_available == 'true' && (github.event.inputs.include_sbom_scan != 'false')
+        run: |
+          if [[ -f "snyk-sbom.json" ]]; then
+            echo "🔍 Scanning SBOM with Snyk..."
+           snyk sbom test --experimental --file=snyk-sbom.json \
+              --package-manager=cyclonedx \
+              --severity-threshold=medium \
+              --sarif-file-output=snyk-sbom.sarif || {
+              echo "⚠️ SBOM scan found issues"
+              exit 0
+            }
+          else
+            echo "⚠️ SBOM file not found, skipping SBOM scan"
+          fi
+        continue-on-error: true
+
+      - name: Upload Snyk SARIF reports
+        if: steps.check-token.outputs.token_available == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: |
+            snyk-oss.sarif
+            snyk-code.sarif
+            snyk-sbom.sarif
         continue-on-error: true
 
       - name: Monitor project in Snyk (trunk only)
@@ -92,7 +141,16 @@ jobs:
           if [ "${{ steps.check-token.outputs.token_available }}" == "true" ]; then
             echo "✅ Snyk security scan completed"
             echo "📊 Check Snyk dashboard for detailed results"
+            echo "🔍 SARIF reports uploaded to GitHub Security tab"
+            if [[ -f "snyk-sbom.json" ]]; then
+              echo "📦 SBOM scan included"
+            fi
           else
             echo "ℹ️ Snyk scan skipped - no token available"
             echo "💡 Add SNYK_TOKEN to repository secrets to enable security scanning"
           fi
+
+      - name: Cleanup temporary files
+        if: always()
+        run: |
+          rm -f snyk-sbom.json *.sarif

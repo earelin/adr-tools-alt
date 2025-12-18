@@ -35,6 +35,10 @@ cargo llvm-cov --all-features --lcov --output-path lcov.info
 # Run security scans
 ./scripts/security-scan.sh
 
+# Generate SBOM (Software Bill of Materials)
+./scripts/generate-sbom.sh
+./scripts/generate-sbom.sh --formats cyclonedx --snyk  # Generate and scan with Snyk
+
 # Individual security tools (if installed)
 cargo audit              # Dependency vulnerabilities
 snyk test               # Snyk open source scan
@@ -114,9 +118,36 @@ This project integrates comprehensive security scanning:
 
 ### Automated Security (CI)
 - **Snyk Integration**: Dependency and code vulnerability scanning
+- **SBOM Generation**: Software Bill of Materials in multiple formats (CycloneDX, SPDX, Syft)
 - **cargo-audit**: Rust security advisory database checking  
-- **GitHub Security**: Results integrated into Security tab
-- **SARIF Upload**: Standardized security reporting format
+- **GitHub Security**: Results integrated into Security tab via SARIF uploads
+- **Supply Chain Security**: SBOM-based vulnerability analysis
+
+### SBOM (Software Bill of Materials)
+The project generates comprehensive SBOM files for supply chain security:
+
+```bash
+# Generate all SBOM formats locally
+./scripts/generate-sbom.sh
+
+# Generate specific formats
+./scripts/generate-sbom.sh --formats cyclonedx,spdx
+
+# Generate and scan with Snyk
+./scripts/generate-sbom.sh --snyk
+```
+
+**SBOM Formats Supported:**
+- **CycloneDX JSON**: Industry standard, preferred by Snyk and most tools
+- **SPDX JSON**: Linux Foundation standard for license compliance
+- **Syft JSON**: Comprehensive format with detailed package information
+- **Human-readable table**: For manual inspection and documentation
+
+**Automated SBOM Generation:**
+- GitHub Actions workflow generates SBOM on every commit
+- Weekly scheduled SBOM scans with vulnerability assessment
+- SBOM files attached to releases for distribution
+- Quality validation ensures completeness and accuracy
 
 ### Local Security Testing
 ```bash
@@ -127,6 +158,9 @@ This project integrates comprehensive security scanning:
 cargo audit                    # Dependency vulnerabilities
 snyk test                     # Dependency scanning
 snyk code test               # Static code analysis
+
+# SBOM generation and scanning
+./scripts/generate-sbom.sh --snyk   # Generate SBOM and scan with Snyk
 ```
 
 ### Security Configuration

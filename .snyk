@@ -9,6 +9,13 @@ language-settings:
     # Set package manager
     packageManager: cargo
 
+# SBOM scanning settings
+sbom-settings:
+  # Prefer CycloneDX format for SBOM scanning
+  preferred-format: cyclonedx
+  # Include license compliance checking
+  include-licenses: true
+
 # Patch settings - automatically applied patches
 patch: {}
 
@@ -42,6 +49,11 @@ exclude:
     - "lcov.info"
     - "coverage-report/**"
     
+    # SBOM output directories (don't scan generated SBOMs)
+    - "sbom-output/**"
+    - "sbom-artifacts/**"
+    - "**/sbom-*"
+    
     # Documentation and examples
     - "doc/**"
     - "docs/**"
@@ -60,8 +72,9 @@ exclude:
     - "*.toml"
     - "*.yml"
     - "*.yaml"
+    - "*.sarif"
     
-    # Keep important security configs
+    # Keep important security and dependency configs
     - "!.snyk"
     - "!Cargo.toml"
     - "!Cargo.lock"
@@ -74,3 +87,5 @@ severity-threshold:
   code: high
   # Container scans should catch medium and above
   container: medium
+  # SBOM scans - medium threshold for supply chain security
+  sbom: medium

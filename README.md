@@ -99,6 +99,50 @@ The change that we're proposing...
 What becomes easier or more difficult...
 ```
 
+## Security & SBOM
+
+This project includes comprehensive security scanning and Software Bill of Materials (SBOM) generation:
+
+### SBOM Generation
+
+Generate SBOM files for supply chain security analysis:
+
+```bash
+# Generate all SBOM formats
+./scripts/generate-sbom.sh
+
+# Generate specific formats
+./scripts/generate-sbom.sh --formats cyclonedx,spdx
+
+# Generate and upload to Snyk for scanning
+./scripts/generate-sbom.sh --snyk
+
+# Custom output directory
+./scripts/generate-sbom.sh --output /path/to/sbom-files
+```
+
+The script generates SBOM files in multiple formats:
+- **CycloneDX JSON** - Industry standard format, preferred by Snyk
+- **SPDX JSON** - Linux Foundation standard
+- **Syft JSON** - Anchore's comprehensive format
+- **Human-readable table** - For easy inspection
+
+### Automated Security Scanning
+
+The project includes automated security scanning via GitHub Actions:
+- **Snyk dependency scanning** - Weekly vulnerability assessment
+- **SBOM-based analysis** - Supply chain security validation
+- **SARIF report generation** - Integrated with GitHub Security tab
+- **cargo-audit** - Rust security advisory checks
+
+### CI/CD Integration
+
+SBOM generation is integrated into the CI/CD pipeline:
+- Automatic SBOM generation on pushes to main branch
+- Weekly scheduled SBOM scans with Snyk
+- SBOM artifacts stored with releases
+- Quality validation and completeness checking
+
 ## License
 
 GPL-3.0
