@@ -1,0 +1,63 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [ trunk ]
+  pull_request:
+    branches: [ trunk ]
+
+jobs:
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Create benchmark data
+        run: |
+          mkdir -p benchmark-data
+          cd benchmark-data
+          
+          # Initialize ADR directory
+          time ../target/release/adr-tools-alt init
+          
+          # Create 100 ADRs to test performance
+          for i in {1..100}; do
+            ../target/release/adr-tools-alt new "Performance test ADR $i" > /dev/null
+          done
+          
+          # Benchmark listing
+          echo "Benchmarking list command..."
+          time for j in {1..10}; do
+            ../target/release/adr-tools-alt list > /dev/null
+          done
+          
+          # Benchmark TOC generation
+          echo "Benchmarking TOC generation..."
+          time for j in {1..10}; do
+            ../target/release/adr-tools-alt generate toc > /dev/null
+          done
+          
+          cd ..
+          rm -rf benchmark-data .adr-dir
+
+      - name: Binary size check
+        run: |
+          echo "Binary size:"
+          ls -lh target/release/adr-tools-alt
+          
+          echo "Stripped binary size:"
+          strip target/release/adr-tools-alt
+          ls -lh target/release/adr-tools-alt

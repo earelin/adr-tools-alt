@@ -2,13 +2,17 @@
 name = "adr-tools-alt"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.70.0"
 description = "Alternative tools for managing Architecture Decision Records (ADRs) written in Rust"
-authors = ["Xavier <xavier@example.com>"]
+authors = ["Xavier <xavier.carriba@gmail.com>"]
 license = "GPL-3.0"
 readme = "README.md"
 repository = "https://github.com/earelin/adr-tools-alt"
+homepage = "https://github.com/earelin/adr-tools-alt"
+documentation = "https://docs.rs/adr-tools-alt"
 keywords = ["adr", "architecture", "decision", "records", "cli"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = ["/.github/", "/doc/"]
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
@@ -16,3 +20,6 @@ chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 anyhow = "1.0"
 regex = "1.0"
+
+[dev-dependencies]
+tempfile = "3.0"

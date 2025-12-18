@@ -1,0 +1,17 @@
+# Clippy configuration for adr-tools-alt
+
+# Cognitive complexity
+cognitive-complexity-threshold = 30
+
+# Documentation
+missing-docs-in-crate-items = false
+
+# Performance
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250
+single-char-binding-names-threshold = 4
+
+# Style
+enum-variant-name-threshold = 3
+max-struct-bools = 3
+too-many-lines-threshold = 100

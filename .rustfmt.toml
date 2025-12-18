@@ -1,0 +1,22 @@
+# Rustfmt configuration for adr-tools-alt
+# Only stable features to ensure compatibility
+
+# Edition
+edition = "2021"
+
+# Formatting options
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+
+# Imports
+reorder_imports = true
+
+# Functions
+fn_params_layout = "Tall"
+
+# Other stable options
+use_small_heuristics = "Default"
+merge_derives = true
+use_field_init_shorthand = true
