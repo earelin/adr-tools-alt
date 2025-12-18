@@ -57,7 +57,7 @@ jobs:
         if: steps.check-token.outputs.token_available == 'true'
         run: |
           echo "🔍 Running Snyk dependency scan..."
-          snyk test \
+          snyk test --all-projects \
             --severity-threshold=medium \
             --project-name=adr-tools-alt \
             --target-reference="${GITHUB_REF}" || {
