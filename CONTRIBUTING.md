@@ -94,6 +94,21 @@ cargo build --release
 - Test edge cases and error conditions
 - Update existing tests when modifying behavior
 
+### Code Coverage
+Generate coverage reports with:
+```bash
+# Install cargo-llvm-cov (one time)
+cargo install cargo-llvm-cov
+
+# Generate coverage report
+cargo llvm-cov --all-features --lcov --output-path lcov.info
+
+# Or use the provided script
+./scripts/coverage.sh
+```
+
+**Note:** Integration tests are excluded from coverage reports to avoid environment conflicts. Coverage focuses on unit tests of the core functionality.
+
 ## Pull Request Process
 
 1. **Update documentation** if you've changed functionality

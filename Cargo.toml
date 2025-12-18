@@ -14,6 +14,9 @@ keywords = ["adr", "architecture", "decision", "records", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = ["/.github/", "/doc/"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
+
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -23,3 +26,8 @@ regex = "1.0"
 
 [dev-dependencies]
 tempfile = "3.0"
+
+# Separate integration tests from unit tests for coverage
+[[test]]
+name = "integration_test"
+path = "tests/integration_test.rs"

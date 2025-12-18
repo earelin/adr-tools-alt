@@ -26,6 +26,11 @@ cargo run -- [command]
 
 # Build release version
 cargo build --release
+
+# Generate code coverage
+cargo llvm-cov --all-features --lcov --output-path lcov.info
+# or use the script
+./scripts/coverage.sh
 ```
 
 ## CLI Usage Examples
