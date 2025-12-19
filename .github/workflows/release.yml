@@ -16,9 +16,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  pre-release-check:
+    name: Pre-release Check
+    runs-on: ubuntu-latest
+    outputs:
+      is_prerelease: ${{ steps.check.outputs.is_prerelease }}
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Check release type
+        id: check
+        run: |
+          if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "🏷️ Pre-release detected: ${{ github.event.release.tag_name }}"
+            echo "⏭️ Skipping binary builds for pre-release"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "🚀 Stable release detected: ${{ github.event.release.tag_name }}"
+            echo "✅ Will proceed with binary builds"
+          fi
+
   build-release:
     name: Build Release
-    if: ${{ !github.event.release.prerelease }}
+    needs: pre-release-check
+    if: needs.pre-release-check.outputs.should_build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -166,11 +189,36 @@ jobs:
 
   release-summary:
     name: Release Summary
-    needs: build-release
+    needs: [pre-release-check, build-release]
     runs-on: ubuntu-latest
     if: always()
     steps:
+      - name: Generate Pre-release Summary
+        if: needs.pre-release-check.outputs.is_prerelease == 'true'
+        run: |
+          echo "## Pre-release Detected 🏷️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** ${{ github.event.release.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Type:** Pre-release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ℹ️ Build Status: Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This workflow only builds binaries for **stable releases**." >> $GITHUB_STEP_SUMMARY
+          echo "Pre-releases (alpha, beta, rc, etc.) are skipped to avoid unnecessary builds." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 When Ready for Stable Release:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Edit this release and uncheck \"Set as a pre-release\"" >> $GITHUB_STEP_SUMMARY
+          echo "2. Or create a new stable release" >> $GITHUB_STEP_SUMMARY
+          echo "3. Binaries will build and attach automatically" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Platforms Ready for Build:" >> $GITHUB_STEP_SUMMARY
+          echo "- Linux (x86_64, x86_64-musl, aarch64)" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows (x86_64)" >> $GITHUB_STEP_SUMMARY
+          echo "- macOS (x86_64, Apple Silicon)" >> $GITHUB_STEP_SUMMARY
+
       - name: Generate Release Summary
+        if: needs.pre-release-check.outputs.is_prerelease == 'false'
         run: |
           echo "## Release Build Complete! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -205,6 +253,10 @@ jobs:
             echo "- All binaries built from tagged source: \`${{ github.event.release.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
             echo "- Build environment: GitHub Actions with audit trail" >> $GITHUB_STEP_SUMMARY
             echo "- Binaries tested for basic functionality during build" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$build_result" == "skipped" ]]; then
+            echo "### ℹ️ Build Status: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Build was skipped (this should not happen for stable releases)." >> $GITHUB_STEP_SUMMARY
           else
             echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -213,7 +265,7 @@ jobs:
           fi
 
       - name: Post-release notification
-        if: needs.build-release.result == 'success'
+        if: needs.pre-release-check.outputs.is_prerelease == 'false' && needs.build-release.result == 'success'
         run: |
           echo "🎉 Release ${{ github.event.release.tag_name }} is ready!"
           echo "📦 Binaries attached to: ${{ github.event.release.html_url }}"
