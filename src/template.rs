@@ -122,19 +122,19 @@ mod tests {
         assert!(DEFAULT_TEMPLATE.contains("## Decision"));
         assert!(DEFAULT_TEMPLATE.contains("## Alternatives"));
         assert!(DEFAULT_TEMPLATE.contains("## Consequences"));
-        
+
         // Test that sections are in the correct order
         let status_pos = DEFAULT_TEMPLATE.find("## Status").unwrap();
         let context_pos = DEFAULT_TEMPLATE.find("## Context").unwrap();
         let decision_pos = DEFAULT_TEMPLATE.find("## Decision").unwrap();
         let alternatives_pos = DEFAULT_TEMPLATE.find("## Alternatives").unwrap();
         let consequences_pos = DEFAULT_TEMPLATE.find("## Consequences").unwrap();
-        
+
         assert!(status_pos < context_pos);
         assert!(context_pos < decision_pos);
         assert!(decision_pos < alternatives_pos);
         assert!(alternatives_pos < consequences_pos);
-        
+
         // Test the init template also has the Alternatives section
         assert!(INIT_TEMPLATE.contains("## Alternatives"));
         assert!(INIT_TEMPLATE.contains("Other options considered:"));
