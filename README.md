@@ -101,29 +101,37 @@ What becomes easier or more difficult...
 
 ## Development
 
-This project includes a comprehensive Makefile for development workflows:
+This project uses a modern CI/CD pipeline structure with separate validation for different stages:
 
+### Quick Start
 ```bash
 # Setup development environment  
 make setup              # Install all dependencies and tools
 
-# Build and test
-make build              # Build the project
-make test               # Run tests
-make check              # Run code quality checks (format + lint)
-make all                # Run comprehensive build pipeline
+# Development workflow
+make ci                 # Run CI pipeline (PR validation - no security)
+make cd                 # Run CD pipeline (full security validation)
+make test-watch         # Watch mode for continuous testing
+make demo               # Interactive demo
 
-# Security and SBOM
-make security           # Run comprehensive security scans
-make sbom               # Generate Software Bill of Materials
-make sbom-snyk          # Generate SBOM and upload to Snyk for scanning
-
-# Development helpers
-make demo               # Run a quick demo of the tool
-make watch              # Watch for changes and run tests
+# View all available commands
 make help               # Show all available targets
 ```
 
+### CI/CD Pipeline Structure
+
+#### CI Pipeline (`make ci`)
+- **Purpose**: Fast feedback for pull requests
+- **Triggers**: PR creation and updates
+- **Includes**: Code quality, tests, build validation, coverage
+- **Excludes**: Security scans (for speed)
+
+#### CD Pipeline (`make cd`)  
+- **Purpose**: Comprehensive validation for deployment
+- **Triggers**: Pushes to trunk, scheduled runs
+- **Includes**: All CI checks + security audit + SBOM generation + compliance
+
+### Local Development Commands
 For a complete list of available commands, run `make help`.
 
 ## Security & SBOM
@@ -161,11 +169,25 @@ The project includes automated security scanning via GitHub Actions:
 
 ### CI/CD Integration
 
-SBOM generation is integrated into the CI/CD pipeline:
-- Automatic SBOM generation on pushes to main branch
-- Weekly scheduled SBOM scans with Snyk
-- SBOM artifacts stored with releases
-- Quality validation and completeness checking
+The project uses a modern two-pipeline approach:
+
+#### CI Pipeline (Pull Requests)
+- **Fast feedback** for developers
+- Code quality checks, tests, and build validation
+- **No security scans** for speed
+- Triggered on PR creation/updates
+
+#### CD Pipeline (Continuous Delivery)
+- **Comprehensive security validation** for production
+- Includes all CI checks plus security audits
+- **SBOM generation and analysis**
+- Triggered on trunk pushes and scheduled runs
+
+Both pipelines can be run locally:
+```bash
+make ci    # PR validation pipeline
+make cd    # Full security validation pipeline
+```
 
 ## License
 

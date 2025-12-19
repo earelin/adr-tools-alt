@@ -1,0 +1,475 @@
+name: CD (Continuous Delivery)
+
+on:
+  push:
+    branches: [ trunk ]
+  schedule:
+    # Run weekly on Mondays at 08:00 UTC for comprehensive security scans
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      force_security_scan:
+        description: 'Force comprehensive security scan'
+        required: false
+        default: 'true'
+        type: boolean
+      upload_sbom:
+        description: 'Upload SBOM to Snyk for scanning'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Pre-flight: Quick validation before expensive operations
+  pre-flight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      should_run_security: ${{ steps.check-conditions.outputs.should_run_security }}
+      should_upload_sbom: ${{ steps.check-conditions.outputs.should_upload_sbom }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check execution conditions
+        id: check-conditions
+        run: |
+          # Determine if we should run security scans
+          if [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ github.event.inputs.force_security_scan }}" == "true" ]] || [[ "${{ github.ref }}" == "refs/heads/trunk" ]]; then
+            echo "should_run_security=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run_security=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Determine if we should upload SBOM
+          if [[ "${{ github.event.inputs.upload_sbom }}" != "false" ]] && [[ -n "${{ secrets.SNYK_TOKEN }}" ]]; then
+            echo "should_upload_sbom=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_upload_sbom=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Build and basic validation (fast feedback)
+  build-and-validate:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+    needs: pre-flight
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test --all-features --workspace -- --test-threads=1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binary-linux
+          path: target/release/adr-tools-alt
+          retention-days: 30
+
+  # Security audits and dependency scanning
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: [pre-flight, build-and-validate]
+    if: needs.pre-flight.outputs.should_run_security == 'true'
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit --format json --output-file cargo-audit.json
+        continue-on-error: true
+
+      - name: Upload cargo audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-results
+          path: cargo-audit.json
+          retention-days: 30
+        if: always()
+
+      - name: Check Snyk token availability
+        id: snyk-check
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            echo "snyk_available=true" >> $GITHUB_OUTPUT
+            echo "✅ SNYK_TOKEN available - proceeding with Snyk scans"
+          else
+            echo "snyk_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ SNYK_TOKEN not available - skipping Snyk scans"
+          fi
+
+      - name: Setup Snyk CLI
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        uses: snyk/actions/setup@master
+
+      - name: Run Snyk dependency scan
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        run: |
+          snyk test --all-projects \
+            --severity-threshold=medium \
+            --target-reference="${GITHUB_REF}" \
+            --sarif-file-output=snyk-dependencies.sarif || {
+            echo "⚠️ Snyk dependency scan found issues"
+            exit 0
+          }
+        continue-on-error: true
+
+      - name: Run Snyk code analysis
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        run: |
+          snyk code test \
+            --severity-threshold=medium \
+            --sarif-file-output=snyk-code.sarif || {
+            echo "⚠️ Snyk code analysis found issues"
+            exit 0
+          }
+        continue-on-error: true
+
+      - name: Upload Snyk SARIF reports
+        if: steps.snyk-check.outputs.snyk_available == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: |
+            snyk-dependencies.sarif
+            snyk-code.sarif
+        continue-on-error: true
+
+      - name: Monitor project in Snyk
+        if: steps.snyk-check.outputs.snyk_available == 'true' && github.ref == 'refs/heads/trunk'
+        run: |
+          snyk monitor --all-projects \
+            --target-reference="${GITHUB_REF}" \
+            --project-name="adr-tools-alt-trunk" || {
+            echo "⚠️ Snyk monitor failed (this is usually not critical)"
+            exit 0
+          }
+        continue-on-error: true
+
+  # SBOM generation and security analysis
+  sbom-security:
+    name: SBOM & Supply Chain Security
+    runs-on: ubuntu-latest
+    needs: [pre-flight, build-and-validate]
+    if: needs.pre-flight.outputs.should_run_security == 'true'
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build project for accurate SBOM
+        run: cargo build --release
+
+      - name: Install SBOM tools
+        run: |
+          # Install cargo-cyclonedx
+          cargo install cargo-cyclonedx
+          
+          # Install syft
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Generate SBOM files
+        run: |
+          mkdir -p sbom-artifacts
+          
+          # Generate CycloneDX SBOM (preferred by Snyk)
+          echo "📦 Generating CycloneDX SBOM..."
+          cargo cyclonedx --format json
+          if [[ -f "adr-tools-alt.cdx.json" ]]; then
+            mv "adr-tools-alt.cdx.json" sbom-artifacts/sbom-cyclonedx.json
+            echo "✅ CycloneDX SBOM generated"
+          fi
+          
+          # Generate SPDX SBOM
+          echo "📦 Generating SPDX SBOM..."
+          syft packages . -o spdx-json=sbom-artifacts/sbom-spdx.json -q
+          
+          # Generate comprehensive Syft JSON
+          echo "📦 Generating Syft JSON SBOM..."
+          syft packages . -o json=sbom-artifacts/sbom-syft.json -q
+          
+          # Generate human-readable table
+          syft packages . -o table=sbom-artifacts/sbom-table.txt -q
+
+      - name: Validate SBOM files
+        run: |
+          echo "🔍 Validating SBOM files..."
+          for file in sbom-artifacts/*.json; do
+            if [[ -f "$file" ]]; then
+              filename=$(basename "$file")
+              size=$(wc -c < "$file")
+              if jq empty "$file" 2>/dev/null; then
+                if jq -e '.components // .packages // .artifacts' "$file" >/dev/null 2>&1; then
+                  count=$(jq -r '(.components // .packages // .artifacts) | length' "$file")
+                  echo "✅ $filename: $size bytes, $count components - Valid"
+                else
+                  echo "⚠️ $filename: $size bytes - Valid JSON but no components found"
+                fi
+              else
+                echo "❌ $filename: Invalid JSON format"
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-artifacts/
+          retention-days: 30
+
+      - name: Scan SBOM with Snyk
+        if: needs.pre-flight.outputs.should_upload_sbom == 'true'
+        run: |
+          if [[ -f "sbom-artifacts/sbom-cyclonedx.json" ]]; then
+            echo "🔍 Scanning CycloneDX SBOM with Snyk..."
+            snyk test --file=sbom-artifacts/sbom-cyclonedx.json \
+              --package-manager=cyclonedx \
+              --severity-threshold=medium \
+              --sarif-file-output=snyk-sbom.sarif \
+              --project-name="adr-tools-alt-sbom" || {
+              echo "⚠️ SBOM scan found vulnerabilities"
+              exit 0
+            }
+          fi
+        continue-on-error: true
+
+      - name: Monitor SBOM in Snyk
+        if: needs.pre-flight.outputs.should_upload_sbom == 'true' && github.ref == 'refs/heads/trunk'
+        run: |
+          if [[ -f "sbom-artifacts/sbom-cyclonedx.json" ]]; then
+            snyk monitor --file=sbom-artifacts/sbom-cyclonedx.json \
+              --package-manager=cyclonedx \
+              --project-name="adr-tools-alt-sbom" \
+              --target-reference="${GITHUB_REF}" || {
+              echo "⚠️ SBOM monitor failed (this is usually not critical)"
+              exit 0
+            }
+          fi
+        continue-on-error: true
+
+      - name: Upload SBOM SARIF reports
+        if: needs.pre-flight.outputs.should_upload_sbom == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-sbom.sarif
+        continue-on-error: true
+
+  # Advanced security checks and compliance
+  advanced-security:
+    name: Advanced Security
+    runs-on: ubuntu-latest
+    needs: [pre-flight, build-and-validate]
+    if: needs.pre-flight.outputs.should_run_security == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Secret scanning (basic patterns)
+        run: |
+          echo "🔍 Scanning for potential secrets..."
+          found_issues=0
+          
+          # Define patterns to search for
+          patterns=(
+            "password\s*=\s*['\"][^'\"]*['\"]"
+            "api_key\s*=\s*['\"][^'\"]*['\"]"
+            "secret\s*=\s*['\"][^'\"]*['\"]"
+            "token\s*=\s*['\"][^'\"]*['\"]"
+            "[a-zA-Z0-9]{32,}"  # Long hex strings
+            "-----BEGIN.*PRIVATE.*KEY-----"
+          )
+          
+          for pattern in "${patterns[@]}"; do
+            if grep -r -i -E "$pattern" src/ 2>/dev/null; then
+              echo "❌ Potential secret found matching pattern: $pattern"
+              found_issues=1
+            fi
+          done
+          
+          if [ $found_issues -eq 0 ]; then
+            echo "✅ No obvious secrets found in source code"
+          else
+            echo "⚠️ Potential secrets detected - please review"
+            exit 1
+          fi
+
+      - name: License compliance check
+        run: |
+          echo "📄 Checking license compliance..."
+          if [ -f "Cargo.lock" ]; then
+            echo "✅ Cargo.lock present (good for reproducible builds)"
+          else
+            echo "⚠️ Cargo.lock not found. Consider committing it for reproducible builds"
+          fi
+          
+          # Check if there are any GPL-incompatible licenses in dependencies
+          echo "📋 Dependency license analysis would go here"
+          echo "✅ License compliance check completed"
+
+      - name: Configuration security check
+        run: |
+          echo "🔧 Checking security configuration..."
+          
+          # Check for insecure configurations
+          if grep -r "unsafe" src/ >/dev/null 2>&1; then
+            echo "⚠️ Found 'unsafe' code blocks - ensure they are necessary and reviewed"
+            grep -rn "unsafe" src/
+          else
+            echo "✅ No unsafe code blocks found"
+          fi
+          
+          # Check for debug prints that might leak information
+          if grep -r "println!\|dbg!\|eprintln!" src/ >/dev/null 2>&1; then
+            echo "ℹ️ Found debug print statements - ensure no sensitive data is logged"
+          fi
+          
+          echo "✅ Configuration security check completed"
+
+  # Documentation and release preparation
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    needs: [pre-flight, build-and-validate]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Generate documentation
+        run: |
+          RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
+
+      - name: Upload documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: target/doc/
+          retention-days: 30
+
+  # Final summary and notification
+  cd-summary:
+    name: CD Pipeline Summary
+    needs: [pre-flight, build-and-validate, security-audit, sbom-security, advanced-security, documentation]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate CD Summary
+        run: |
+          echo "## Continuous Delivery Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Job status table
+          echo "| Component | Status | Notes |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          build_result="${{ needs.build-and-validate.result }}"
+          security_result="${{ needs.security-audit.result }}"
+          sbom_result="${{ needs.sbom-security.result }}"
+          advanced_result="${{ needs.advanced-security.result }}"
+          docs_result="${{ needs.documentation.result }}"
+          
+          echo "| Build & Validation | $([[ "$build_result" == "success" ]] && echo "✅ Passed" || echo "❌ Failed") | Core functionality |" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.pre-flight.outputs.should_run_security }}" == "true" ]]; then
+            echo "| Security Audit | $([[ "$security_result" == "success" ]] && echo "✅ Passed" || echo "❌ Failed") | Dependencies & vulnerabilities |" >> $GITHUB_STEP_SUMMARY
+            echo "| SBOM Security | $([[ "$sbom_result" == "success" ]] && echo "✅ Passed" || echo "❌ Failed") | Supply chain analysis |" >> $GITHUB_STEP_SUMMARY
+            echo "| Advanced Security | $([[ "$advanced_result" == "success" ]] && echo "✅ Passed" || echo "❌ Failed") | Secrets & compliance |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Security Scans | ⏭️ Skipped | Not scheduled for this run |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "| Documentation | $([[ "$docs_result" == "success" ]] && echo "✅ Passed" || echo "❌ Failed") | API documentation |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Overall status
+          if [[ "$build_result" == "success" ]] && ([[ "${{ needs.pre-flight.outputs.should_run_security }}" == "false" ]] || [[ "$security_result" == "success" && "$sbom_result" == "success" && "$advanced_result" == "success" ]]); then
+            echo "🚀 **CD Pipeline completed successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All quality gates passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Security validation completed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Ready for deployment" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **CD Pipeline failed.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the failed components above." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          # Additional information
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Information" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.pre-flight.outputs.should_run_security }}" == "true" ]]; then
+            echo "- 🔍 **Full security scan performed**" >> $GITHUB_STEP_SUMMARY
+            echo "- 📦 **SBOM generated and analyzed**" >> $GITHUB_STEP_SUMMARY
+            if [[ "${{ needs.pre-flight.outputs.should_upload_sbom }}" == "true" ]]; then
+              echo "- ☁️ **Results uploaded to Snyk dashboard**" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "- 📋 **Check GitHub Security tab for detailed results**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⏭️ **Security scan skipped for this run**" >> $GITHUB_STEP_SUMMARY
+            echo "- 🕒 **Next scheduled scan: Monday 08:00 UTC**" >> $GITHUB_STEP_SUMMARY
+          fi

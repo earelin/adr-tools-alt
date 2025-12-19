@@ -8,13 +8,18 @@ This is `adr-tools-alt`, a Rust implementation that replicates the functionality
 
 ## Development Commands
 
-The project uses a comprehensive Makefile for development workflows:
+The project uses a comprehensive Makefile with a modern CI/CD pipeline structure:
 
+### CI/CD Pipeline Commands
 ```bash
-# Setup development environment
-make setup              # Install all dependencies and tools
-make check-tools        # Check which tools are installed
+make ci                 # Run CI pipeline (PR validation - fast feedback)
+make cd                 # Run CD pipeline (full security validation)
+make setup              # Setup development environment
+make help               # Show all available commands
+```
 
+### Core Development
+```bash
 # Build and development
 make build              # Build the project  
 make build-release      # Build release version
@@ -32,28 +37,39 @@ make format             # Format code with rustfmt
 make format-check       # Check code formatting
 make lint               # Run clippy lints
 make check              # Run all code quality checks (format + lint)
+```
 
-# Documentation
-make docs               # Generate documentation
-make docs-open          # Generate and open documentation
-make serve-docs         # Serve documentation locally
-
-# Security and SBOM
+### Security and SBOM
+```bash
 make security           # Run comprehensive security scans
 make sbom               # Generate Software Bill of Materials
 make sbom-snyk          # Generate SBOM and upload to Snyk for scanning
+```
 
-# CI/CD and validation  
-make validate-workflows # Validate GitHub Actions workflow files
-make ci                 # Run CI pipeline (equivalent to GitHub Actions)
-make all                # Run comprehensive build pipeline
-make release-check      # Check if ready for release
-
-# Development helpers
+### Development Helpers
+```bash
 make watch              # Watch for changes and run tests
 make env                # Show environment information
 make run ARGS="--help"  # Run the application with arguments
+make coverage           # Generate test coverage reports
+make docs               # Generate and serve documentation
 ```
+
+### Pipeline Structure
+
+#### CI Pipeline (Fast PR Feedback)
+- **Triggers**: Pull request creation and updates
+- **Purpose**: Quick developer feedback without security overhead
+- **Includes**: Code quality, tests, build matrix, coverage, MSRV
+- **Duration**: ~5-10 minutes
+- **Command**: `make ci`
+
+#### CD Pipeline (Comprehensive Security)
+- **Triggers**: Push to trunk, scheduled runs, manual dispatch
+- **Purpose**: Production-ready validation with full security audit
+- **Includes**: All CI checks + security audit + SBOM + compliance
+- **Duration**: ~15-30 minutes  
+- **Command**: `make cd`
 
 ### Legacy Scripts (Replaced by Makefile)
 

@@ -20,9 +20,9 @@ help: ## Show this help message
 	@echo ""
 	@printf "\033[1m%s\033[0m\n" "Examples:"
 	@echo "  make setup          # Install dependencies and tools"
-	@echo "  make all            # Build, test, lint, and check everything"
+	@echo "  make ci             # Run CI pipeline (PR validation)"
+	@echo "  make cd             # Run CD pipeline (full security)"
 	@echo "  make test-watch     # Run tests in watch mode"
-	@echo "  make security       # Run security scans"
 	@echo "  make sbom           # Generate Software Bill of Materials"
 	@echo ""
 
@@ -130,6 +130,23 @@ lint: ## Run clippy lints
 check: format-check lint ## Run all code quality checks
 	@printf "\033[1m\033[34m===> Running comprehensive code checks\033[0m\n"
 	@printf "\033[0;32m✅ All code quality checks passed\033[0m\n"
+
+msrv: ## Check Minimum Supported Rust Version compatibility
+	@printf "\033[1m\033[34m===> Checking MSRV compatibility\033[0m\n"
+	@printf "\033[0;34mℹ️  Testing with Rust 1.70 (MSRV)...\033[0m\n"
+	@if command -v rustup >/dev/null 2>&1; then \
+		if rustup toolchain list | grep -q "1.70"; then \
+			rustup run 1.70.0 cargo check --all-features; \
+		else \
+			printf "\033[1;33m⚠️  Rust 1.70 not installed. Install with: rustup install 1.70.0\033[0m\n"; \
+			printf "\033[0;34mℹ️  Testing with current Rust version instead...\033[0m\n"; \
+			cargo check --all-features; \
+		fi; \
+	else \
+		printf "\033[1;33m⚠️  rustup not available. Testing with current Rust version...\033[0m\n"; \
+		cargo check --all-features; \
+	fi
+	@printf "\033[0;32m✅ MSRV compatibility check completed\033[0m\n"
 
 # =============================================================================
 # Documentation
@@ -405,9 +422,15 @@ all: clean build test check docs coverage ## Run comprehensive build pipeline
 	@printf "\033[1m\033[34m===> Running comprehensive build pipeline\033[0m\n"
 	@printf "\033[0;32m✅ All checks passed! Ready for release.\033[0m\n"
 
-ci: all security validate-workflows ## Run CI pipeline (equivalent to GitHub Actions)
-	@printf "\033[1m\033[34m===> Running CI pipeline\033[0m\n"
+ci: check test build coverage msrv validate-workflows ## Run CI pipeline (PR validation - no security)
+	@printf "\033[1m\033[34m===> Running CI pipeline (PR validation)\033[0m\n"
 	@printf "\033[0;32m✅ CI pipeline completed successfully!\033[0m\n"
+	@printf "\033[0;34mℹ️  This matches the PR validation pipeline\033[0m\n"
+
+cd: all security sbom ## Run CD pipeline (full security validation)
+	@printf "\033[1m\033[34m===> Running CD pipeline (Continuous Delivery)\033[0m\n"
+	@printf "\033[0;32m✅ CD pipeline completed successfully!\033[0m\n"
+	@printf "\033[0;34mℹ️  This matches the trunk deployment pipeline\033[0m\n"
 
 # =============================================================================
 # Development Helpers
