@@ -17,6 +17,10 @@ The issue motivating this decision, and any context that influences or constrain
 
 The change that we're proposing or have agreed to implement.
 
+## Alternatives
+
+What other options were considered and why they were rejected.
+
 ## Consequences
 
 What becomes easier or more difficult to do and any risks introduced by the change that will need to be mitigated.
@@ -38,6 +42,15 @@ We need to record the architectural decisions made on this project.
 ## Decision
 
 We will use Architecture Decision Records, as [described by Michael Nygard](http://thinkrelevance.com/blog/2011/11/15/documenting-architecture-decisions).
+
+## Alternatives
+
+Other options considered:
+- No documentation of decisions
+- Informal documentation in wiki or README files
+- Decision logs in issue tracking systems
+
+These were rejected because they lack the structure and discoverability that ADRs provide.
 
 ## Consequences
 
@@ -99,5 +112,31 @@ mod tests {
     fn test_generate_filename() {
         assert_eq!(generate_filename(1, "Use Rust"), "0001-use-rust.md");
         assert_eq!(generate_filename(42, "API Design"), "0042-api-design.md");
+    }
+
+    #[test]
+    fn test_template_structure() {
+        // Test that the default template contains all required sections
+        assert!(DEFAULT_TEMPLATE.contains("## Status"));
+        assert!(DEFAULT_TEMPLATE.contains("## Context"));
+        assert!(DEFAULT_TEMPLATE.contains("## Decision"));
+        assert!(DEFAULT_TEMPLATE.contains("## Alternatives"));
+        assert!(DEFAULT_TEMPLATE.contains("## Consequences"));
+        
+        // Test that sections are in the correct order
+        let status_pos = DEFAULT_TEMPLATE.find("## Status").unwrap();
+        let context_pos = DEFAULT_TEMPLATE.find("## Context").unwrap();
+        let decision_pos = DEFAULT_TEMPLATE.find("## Decision").unwrap();
+        let alternatives_pos = DEFAULT_TEMPLATE.find("## Alternatives").unwrap();
+        let consequences_pos = DEFAULT_TEMPLATE.find("## Consequences").unwrap();
+        
+        assert!(status_pos < context_pos);
+        assert!(context_pos < decision_pos);
+        assert!(decision_pos < alternatives_pos);
+        assert!(alternatives_pos < consequences_pos);
+        
+        // Test the init template also has the Alternatives section
+        assert!(INIT_TEMPLATE.contains("## Alternatives"));
+        assert!(INIT_TEMPLATE.contains("Other options considered:"));
     }
 }

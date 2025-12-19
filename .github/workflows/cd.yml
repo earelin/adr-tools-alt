@@ -11,12 +11,12 @@ on:
       force_security_scan:
         description: 'Force comprehensive security scan'
         required: false
-        default: 'true'
+        default: true
         type: boolean
       upload_sbom:
         description: 'Upload SBOM to Snyk for scanning'
         required: false
-        default: 'true'
+        default: true
         type: boolean
 
 env:
@@ -85,7 +85,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features --message-format=json -- -D warnings > reports/clippy.json
 
       - name: Build release
         run: cargo build --release

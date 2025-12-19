@@ -109,6 +109,51 @@ fn test_init_and_workflow() {
 }
 
 #[test]
+fn test_template_includes_alternatives_section() {
+    run_in_temp_dir(|| {
+        // Test init command
+        let output = Command::new(get_binary_path())
+            .arg("init")
+            .output()
+            .expect("Failed to execute init");
+
+        assert!(output.status.success());
+        
+        // Read the initial ADR file
+        let init_adr_content = fs::read_to_string("doc/adr/0001-record-architecture-decisions.md")
+            .expect("Failed to read initial ADR file");
+            
+        // Check that the initial ADR contains the Alternatives section
+        assert!(init_adr_content.contains("## Alternatives"));
+        assert!(init_adr_content.contains("Other options considered:"));
+        
+        // Create a new ADR
+        let output = Command::new(get_binary_path())
+            .args(["new", "Test new template structure"])
+            .output()
+            .expect("Failed to execute new");
+
+        assert!(output.status.success());
+        
+        // Read the new ADR file
+        let new_adr_content = fs::read_to_string("doc/adr/0002-test-new-template-structure.md")
+            .expect("Failed to read new ADR file");
+            
+        // Check that the new ADR contains the Alternatives section
+        assert!(new_adr_content.contains("## Alternatives"));
+        assert!(new_adr_content.contains("What other options were considered"));
+        
+        // Verify the order of sections (Alternatives should come after Decision)
+        let decision_pos = new_adr_content.find("## Decision").unwrap();
+        let alternatives_pos = new_adr_content.find("## Alternatives").unwrap();
+        let consequences_pos = new_adr_content.find("## Consequences").unwrap();
+        
+        assert!(decision_pos < alternatives_pos);
+        assert!(alternatives_pos < consequences_pos);
+    });
+}
+
+#[test]
 fn test_supersede_functionality() {
     run_in_temp_dir(|| {
         // Initialize and create first ADR
