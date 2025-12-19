@@ -6,11 +6,46 @@ This is a Rust implementation that mimics the behavior of [adr-tools](https://gi
 
 ## Installation
 
+### Option 1: Download Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from the [releases page](https://github.com/earelin/adr-tools-alt/releases):
+
+#### Linux
+```bash
+# x86_64
+curl -L https://github.com/earelin/adr-tools-alt/releases/latest/download/adr-tools-alt-linux-x86_64 -o adr-tools-alt
+chmod +x adr-tools-alt
+
+# x86_64 (musl - static binary)
+curl -L https://github.com/earelin/adr-tools-alt/releases/latest/download/adr-tools-alt-linux-x86_64-musl -o adr-tools-alt
+chmod +x adr-tools-alt
+
+# aarch64 (ARM64)
+curl -L https://github.com/earelin/adr-tools-alt/releases/latest/download/adr-tools-alt-linux-aarch64 -o adr-tools-alt
+chmod +x adr-tools-alt
+```
+
+#### macOS
+```bash
+# Intel Macs
+curl -L https://github.com/earelin/adr-tools-alt/releases/latest/download/adr-tools-alt-macos-x86_64 -o adr-tools-alt
+chmod +x adr-tools-alt
+
+# Apple Silicon Macs
+curl -L https://github.com/earelin/adr-tools-alt/releases/latest/download/adr-tools-alt-macos-aarch64 -o adr-tools-alt
+chmod +x adr-tools-alt
+```
+
+#### Windows
+Download `adr-tools-alt-windows-x86_64.exe` from the releases page.
+
+### Option 2: Install via Cargo
+
 ```bash
 cargo install adr-tools-alt
 ```
 
-Or build from source:
+### Option 3: Build from Source
 
 ```bash
 git clone https://github.com/earelin/adr-tools-alt

@@ -1,241 +1,20 @@
-name: Release
+name: Release Build
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-build-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
-  # Pre-release validation
-  pre-release-validation:
-    name: Pre-release Validation
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Validate and update version
-        id: validate-version
-        run: |
-          tag_version="${{ steps.get_version.outputs.version }}"
-          cargo_version=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          
-          echo "📋 Version Information:"
-          echo "  Git tag: v$tag_version"
-          echo "  Cargo.toml: $cargo_version"
-          
-          # Update Cargo.toml version to match the release tag
-          echo "🔄 Updating Cargo.toml version to match release tag..."
-          sed -i "s/^version = \".*\"/version = \"$tag_version\"/" Cargo.toml
-          
-          # Verify the update
-          new_cargo_version=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "✅ Cargo.toml version updated: $cargo_version → $new_cargo_version"
-          
-          # Validate that it matches now
-          if [[ "$tag_version" == "$new_cargo_version" ]]; then
-            echo "✅ Version consistency validated: $tag_version"
-          else
-            echo "❌ Failed to update version in Cargo.toml"
-            exit 1
-          fi
-          
-          # Set outputs for use in other jobs
-          echo "tag_version=$tag_version" >> $GITHUB_OUTPUT
-          echo "original_cargo_version=$cargo_version" >> $GITHUB_OUTPUT
-          echo "updated_cargo_version=$new_cargo_version" >> $GITHUB_OUTPUT
-
-      - name: Run release checks
-        run: |
-          # Quick validation that project is in good state
-          cargo fmt --all -- --check
-          cargo clippy --all-targets --all-features -- -D warnings
-          cargo test --all-features --workspace -- --test-threads=1
-
-  # Generate SBOM for release
-  generate-release-sbom:
-    name: Generate Release SBOM
-    runs-on: ubuntu-latest
-    needs: pre-release-validation
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Build release for SBOM
-        run: |
-          echo "🔍 Current Cargo.toml version:"
-          grep '^version = ' Cargo.toml
-          echo ""
-          echo "🏗️ Building release binary for SBOM generation..."
-          cargo build --release
-
-      - name: Install SBOM tools
-        run: |
-          cargo install cargo-cyclonedx
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-
-      - name: Generate release SBOM
-        run: |
-          mkdir -p release-sbom
-          
-          # Generate CycloneDX SBOM
-          cargo cyclonedx --format json
-          if [[ -f "adr-tools-alt.cdx.json" ]]; then
-            mv "adr-tools-alt.cdx.json" "release-sbom/adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-sbom.json"
-          fi
-          
-          # Generate SPDX SBOM
-          syft packages . -o spdx-json="release-sbom/adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-spdx.json" -q
-          
-          # Generate human-readable SBOM
-          syft packages . -o table="release-sbom/adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-sbom.txt" -q
-
-      - name: Upload release SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-sbom
-          path: release-sbom/
-          retention-days: 90
-
-  # Create GitHub release
-  create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [pre-release-validation, generate-release-sbom]
-    outputs:
-      upload_url: ${{ steps.release.outputs.upload_url }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download release SBOM
-        uses: actions/download-artifact@v4
-        with:
-          name: release-sbom
-          path: release-sbom/
-
-      - name: Create Release
-        id: release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release v${{ needs.pre-release-validation.outputs.version }}
-          body: |
-            ## adr-tools-alt v${{ needs.pre-release-validation.outputs.version }}
-            
-            Architecture Decision Records (ADR) management tool written in Rust.
-            
-            ### Version Information
-            - **Release Version**: v${{ needs.pre-release-validation.outputs.version }}
-            - **Package Version**: Check Cargo.toml in source
-            
-            ### What's Changed
-            See [CHANGELOG.md](https://github.com/earelin/adr-tools-alt/blob/trunk/CHANGELOG.md) for detailed changes.
-            
-            ### Installation
-            
-            #### Option 1: Download Binary
-            Download the appropriate binary for your platform from the assets below.
-            
-            #### Option 2: Install via Cargo
-            ```bash
-            cargo install adr-tools-alt
-            ```
-            
-            #### Option 3: Build from Source
-            ```bash
-            git clone https://github.com/earelin/adr-tools-alt.git
-            cd adr-tools-alt
-            cargo build --release
-            ```
-            
-            ### Usage
-            ```bash
-            # Initialize ADR directory
-            adr-tools-alt init
-            
-            # Create new ADR
-            adr-tools-alt new "Use microservices architecture"
-            
-            # List all ADRs
-            adr-tools-alt list
-            
-            # Generate table of contents
-            adr-tools-alt generate toc
-            ```
-            
-            ### Security & Verification
-            - 🔒 All binaries are built in GitHub Actions with full audit trails
-            - 📦 SBOM (Software Bill of Materials) files included with release
-            - 🛡️ Comprehensive security scanning performed
-            - 🔍 Reproducible builds from tagged source code
-            
-            ### Supply Chain Security
-            This release includes SBOM files for supply chain verification:
-            - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-sbom.json` (CycloneDX format)
-            - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-spdx.json` (SPDX format)  
-            - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-sbom.txt` (Human-readable)
-            
-            ### Platform Support
-            This release provides binaries for:
-            - Linux x86_64 (glibc and musl)
-            - Windows x86_64  
-            - macOS x86_64 and Apple Silicon (ARM64)
-            
-            ---
-            
-            **Need help?** Check our [documentation](https://github.com/earelin/adr-tools-alt/blob/trunk/README.md) or [open an issue](https://github.com/earelin/adr-tools-alt/issues).
-          draft: false
-          prerelease: ${{ contains(github.ref, '-') }}
-
-      - name: Upload SBOM Files to Release
-        run: |
-          for file in release-sbom/*; do
-            if [[ -f "$file" ]]; then
-              filename=$(basename "$file")
-              curl -X POST \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary @"$file" \
-                "${{ steps.release.outputs.upload_url }}?name=$filename"
-            fi
-          done
-
-  # Build release binaries
   build-release:
-    name: Build Release Binaries
-    needs: [create-release, pre-release-validation]
+    name: Build Release
+    if: ${{ !github.event.release.prerelease }}
     strategy:
       fail-fast: false
       matrix:
@@ -243,25 +22,41 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: adr-tools-alt
-            asset_name: adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-linux-x86_64
+            asset_name: adr-tools-alt-linux-x86_64
+            use_cross: false
+
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact_name: adr-tools-alt
-            asset_name: adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-linux-x86_64-musl
+            asset_name: adr-tools-alt-linux-x86_64-musl
+            use_cross: true
+
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: adr-tools-alt
+            asset_name: adr-tools-alt-linux-aarch64
+            use_cross: true
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: adr-tools-alt.exe
-            asset_name: adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-windows-x86_64.exe
+            asset_name: adr-tools-alt-windows-x86_64.exe
+            use_cross: false
+
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: adr-tools-alt
-            asset_name: adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-macos-x86_64
+            asset_name: adr-tools-alt-macos-x86_64
+            use_cross: false
+
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: adr-tools-alt
-            asset_name: adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-macos-aarch64
+            asset_name: adr-tools-alt-macos-aarch64
+            use_cross: false
 
     runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -274,81 +69,136 @@ jobs:
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ matrix.target }}
           cache-on-failure: true
 
-      - name: Install musl tools (Linux musl)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install cross (if needed)
+        if: matrix.use_cross
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install platform dependencies (Linux musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl' && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
+            echo "🔧 Building with cross for ${{ matrix.target }}"
+            cross build --release --target ${{ matrix.target }}
+          else
+            echo "🔧 Building natively for ${{ matrix.target }}"
+            cargo build --release --target ${{ matrix.target }}
+          fi
 
-      - name: Prepare binary
+      - name: Prepare and verify binary
         shell: bash
         run: |
           binary_path="target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
           
-          # Verify binary exists and works
-          if [[ "${{ runner.os }}" != "Windows" ]]; then
-            chmod +x "$binary_path"
-            "$binary_path" --version
-          else
-            "$binary_path" --version
+          # Verify binary exists
+          if [[ ! -f "$binary_path" ]]; then
+            echo "❌ Binary not found at: $binary_path"
+            ls -la target/${{ matrix.target }}/release/
+            exit 1
           fi
           
-          # Copy to staging area with final name
+          echo "✅ Binary found: $binary_path"
+          
+          # Create staging directory
           mkdir -p staging
+          
+          # Copy binary to staging with final asset name
           cp "$binary_path" "staging/${{ matrix.asset_name }}"
+          
+          # Set executable permissions (Unix only)
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "staging/${{ matrix.asset_name }}"
+          fi
+          
+          # Show binary info
+          echo "📋 Binary information:"
+          ls -lh "staging/${{ matrix.asset_name }}"
+          
+          # Test binary execution (basic version check)
+          echo "🧪 Testing binary execution:"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            "./staging/${{ matrix.asset_name }}" --version
+          else
+            ./staging/${{ matrix.asset_name }} --version
+          fi
 
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ github.event.release.upload_url }}
           asset_path: staging/${{ matrix.asset_name }}
           asset_name: ${{ matrix.asset_name }}
           asset_content_type: application/octet-stream
 
-  # Post-release tasks
-  post-release:
-    name: Post-release Tasks
-    needs: [create-release, build-release, pre-release-validation]
+      - name: Upload build artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: staging/${{ matrix.asset_name }}
+          retention-days: 7
+
+  release-summary:
+    name: Release Summary
+    needs: build-release
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Post-release summary
+      - name: Generate Release Summary
         run: |
-          echo "## Release v${{ needs.pre-release-validation.outputs.version }} Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Build Complete! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ✅ What was released:" >> $GITHUB_STEP_SUMMARY
-          echo "- 🏗️ Cross-platform binaries (Linux, Windows, macOS)" >> $GITHUB_STEP_SUMMARY
-          echo "- 📦 SBOM files for supply chain verification" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔒 Full security validation performed" >> $GITHUB_STEP_SUMMARY
-          echo "- 📚 Complete documentation included" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** ${{ github.event.release.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📋 Version Information:" >> $GITHUB_STEP_SUMMARY
-          echo "- **Release Tag**: v${{ needs.pre-release-validation.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Version**: Cargo.toml updated to match release tag" >> $GITHUB_STEP_SUMMARY
-          echo "- **Pre-release**: ${{ contains(github.ref, '-') && 'Yes' || 'No' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔗 Links:" >> $GITHUB_STEP_SUMMARY
-          echo "- [Release Page](https://github.com/earelin/adr-tools-alt/releases/tag/v${{ needs.pre-release-validation.outputs.version }})" >> $GITHUB_STEP_SUMMARY
-          echo "- [Installation Guide](https://github.com/earelin/adr-tools-alt#installation)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Documentation](https://docs.rs/adr-tools-alt)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Update package registries (if applicable)" >> $GITHUB_STEP_SUMMARY
-          echo "2. Announce the release" >> $GITHUB_STEP_SUMMARY
-          echo "3. Update documentation sites" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Note**: Cargo.toml version was automatically updated to match the release tag during build."
+          
+          # Check build results
+          build_result="${{ needs.build-release.result }}"
+          
+          if [[ "$build_result" == "success" ]]; then
+            echo "### ✅ Build Status: Success" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All platform binaries were built and attached to the release:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Platform | Architecture | Binary |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|--------------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Linux | x86_64 | \`adr-tools-alt-linux-x86_64\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Linux | x86_64 (musl) | \`adr-tools-alt-linux-x86_64-musl\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Linux | aarch64 | \`adr-tools-alt-linux-aarch64\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Windows | x86_64 | \`adr-tools-alt-windows-x86_64.exe\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| macOS | x86_64 | \`adr-tools-alt-macos-x86_64\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| macOS | aarch64 (Apple Silicon) | \`adr-tools-alt-macos-aarch64\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
+            echo "- [📦 Release Page](${{ github.event.release.html_url }})" >> $GITHUB_STEP_SUMMARY
+            echo "- [⬇️ Download Assets](${{ github.event.release.html_url }})" >> $GITHUB_STEP_SUMMARY
+            echo "- [📚 Installation Guide](https://github.com/${{ github.repository }}#installation)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🛡️ Security Notes" >> $GITHUB_STEP_SUMMARY
+            echo "- All binaries built from tagged source: \`${{ github.event.release.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Build environment: GitHub Actions with audit trail" >> $GITHUB_STEP_SUMMARY
+            echo "- Binaries tested for basic functionality during build" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Build Status: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Some builds failed. Please check the job logs above for details." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
-      - name: Trigger follow-up workflows
+      - name: Post-release notification
+        if: needs.build-release.result == 'success'
         run: |
-          echo "🔄 Consider triggering follow-up workflows:"
-          echo "  - Package registry updates"
-          echo "  - Documentation deployment"
-          echo "  - Announcement automation"
+          echo "🎉 Release ${{ github.event.release.tag_name }} is ready!"
+          echo "📦 Binaries attached to: ${{ github.event.release.html_url }}"
+          echo "🔗 All platforms supported: Linux (x86_64, aarch64), Windows (x86_64), macOS (x86_64, Apple Silicon)"
