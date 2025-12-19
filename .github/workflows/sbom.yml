@@ -53,6 +53,7 @@ jobs:
       - name: Install syft for additional SBOM formats
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          echo "/usr/local/bin" >> $GITHUB_PATH
 
       - name: Generate SBOM files
         id: sbom-generate
@@ -62,10 +63,18 @@ jobs:
           
           # Generate CycloneDX SBOM (JSON format - preferred for Snyk)
           echo "📦 Generating CycloneDX SBOM..."
-          cargo cyclonedx --format json --output-dir sbom-artifacts
+          cargo cyclonedx --format json
           
-          # Rename to standard naming
-          mv sbom-artifacts/bom.json sbom-artifacts/sbom-cyclonedx.json
+          # Move to standard directory and naming
+          if [[ -f "adr-tools-alt.cdx.json" ]]; then
+            mv "adr-tools-alt.cdx.json" sbom-artifacts/sbom-cyclonedx.json
+          elif [[ -f "*.cdx.json" ]]; then
+            mv *.cdx.json sbom-artifacts/sbom-cyclonedx.json
+          else
+            echo "❌ CycloneDX SBOM file not found"
+            ls -la *.json 2>/dev/null || echo "No JSON files found"
+            exit 1
+          fi
           
           # Generate SPDX SBOM using syft (alternative format)
           echo "📦 Generating SPDX SBOM..."

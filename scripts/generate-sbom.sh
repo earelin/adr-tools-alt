@@ -81,8 +81,20 @@ check_dependencies() {
     
     if [[ "$FORMATS" == *"spdx"* || "$FORMATS" == *"syft"* ]] && ! command -v syft >/dev/null 2>&1; then
         print_warning "syft not found. Attempting to install..."
-        if curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin 2>/dev/null; then
-            print_success "syft installed successfully"
+        
+        # Try common installation locations
+        if [[ -d "$HOME/.local/bin" ]]; then
+            INSTALL_DIR="$HOME/.local/bin"
+        elif [[ -d "$HOME/bin" ]]; then
+            INSTALL_DIR="$HOME/bin"
+        else
+            mkdir -p "$HOME/.local/bin"
+            INSTALL_DIR="$HOME/.local/bin"
+        fi
+        
+        if curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "$INSTALL_DIR" 2>/dev/null; then
+            export PATH="$INSTALL_DIR:$PATH"
+            print_success "syft installed successfully to $INSTALL_DIR"
         else
             missing_deps+=("syft (https://github.com/anchore/syft)")
         fi
@@ -112,12 +124,21 @@ check_dependencies() {
 generate_cyclonedx() {
     print_info "Generating CycloneDX SBOM..."
     
-    cargo cyclonedx --format json --output-dir "$OUTPUT_DIR"
-    
-    # Rename to standard naming
-    if [[ -f "$OUTPUT_DIR/bom.json" ]]; then
-        mv "$OUTPUT_DIR/bom.json" "$OUTPUT_DIR/sbom-cyclonedx.json"
-        print_success "CycloneDX SBOM generated: $OUTPUT_DIR/sbom-cyclonedx.json"
+    # Generate in current directory (cargo-cyclonedx default behavior)
+    if cargo cyclonedx --format json; then
+        # Find the generated file (format: package-name.cdx.json)
+        if [[ -f "adr-tools-alt.cdx.json" ]]; then
+            mv "adr-tools-alt.cdx.json" "$OUTPUT_DIR/sbom-cyclonedx.json"
+            print_success "CycloneDX SBOM generated: $OUTPUT_DIR/sbom-cyclonedx.json"
+        elif ls *.cdx.json 1> /dev/null 2>&1; then
+            mv *.cdx.json "$OUTPUT_DIR/sbom-cyclonedx.json"
+            print_success "CycloneDX SBOM generated: $OUTPUT_DIR/sbom-cyclonedx.json"
+        else
+            print_error "CycloneDX SBOM file not found after generation"
+            print_info "Looking for any JSON files:"
+            ls -la *.json 2>/dev/null || echo "No JSON files found"
+            return 1
+        fi
     else
         print_error "Failed to generate CycloneDX SBOM"
         return 1

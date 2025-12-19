@@ -94,8 +94,33 @@ jobs:
           fi
           
           # Generate CycloneDX SBOM
-          cargo cyclonedx --format json --output-dir .
-          mv bom.json snyk-sbom.json
+          cargo cyclonedx --format json
+          
+          # Find and rename the generated file
+          if [[ -f "adr-tools-alt.cdx.json" ]]; then
+            mv "adr-tools-alt.cdx.json" snyk-sbom.json
+          elif ls *.cdx.json 1> /dev/null 2>&1; then
+            mv *.cdx.json snyk-sbom.json
+          else
+            echo "⚠️ CycloneDX SBOM file not found, attempting syft fallback"
+            # Install syft as fallback
+            curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /tmp/syft-bin
+            export PATH="/tmp/syft-bin:$PATH"
+            if command -v syft &> /dev/null; then
+              syft packages . -o cyclonedx-json=snyk-sbom.json
+            else
+              echo "❌ No SBOM generation tools available"
+              exit 1
+            fi
+          fi
+          
+          # Verify SBOM was created
+          if [[ ! -f "snyk-sbom.json" ]]; then
+            echo "❌ Failed to generate SBOM file"
+            exit 1
+          else
+            echo "✅ SBOM generated successfully ($(wc -c < snyk-sbom.json) bytes)"
+          fi
         continue-on-error: true
 
       - name: Scan SBOM with Snyk
