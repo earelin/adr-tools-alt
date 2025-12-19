@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+  packages: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -131,15 +135,27 @@ jobs:
             ./staging/${{ matrix.asset_name }} --version
           fi
 
+      - name: Prepare asset for upload
+        run: |
+          echo "📋 Upload preparation:"
+          echo "  Asset name: ${{ matrix.asset_name }}"
+          echo "  Asset path: staging/${{ matrix.asset_name }}"
+          echo "  File exists: $(test -f "staging/${{ matrix.asset_name }}" && echo "✅ Yes" || echo "❌ No")"
+          if [[ -f "staging/${{ matrix.asset_name }}" ]]; then
+            echo "  File size: $(ls -lh staging/${{ matrix.asset_name }} | awk '{print $5}')"
+            echo "  File permissions: $(ls -l staging/${{ matrix.asset_name }} | awk '{print $1}')"
+          fi
+          echo "  Release tag: ${{ github.event.release.tag_name }}"
+          echo "  Upload URL: ${{ github.event.release.upload_url }}"
+
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: shogo82148/actions-upload-release-asset@v1
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: staging/${{ matrix.asset_name }}
           asset_name: ${{ matrix.asset_name }}
           asset_content_type: application/octet-stream
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload build artifact (backup)
         uses: actions/upload-artifact@v4
