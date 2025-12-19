@@ -8,42 +8,60 @@ This is `adr-tools-alt`, a Rust implementation that replicates the functionality
 
 ## Development Commands
 
+The project uses a comprehensive Makefile for development workflows:
+
 ```bash
-# Build the project
-cargo build
+# Setup development environment
+make setup              # Install all dependencies and tools
+make check-tools        # Check which tools are installed
 
-# Run tests
-cargo test
+# Build and development
+make build              # Build the project  
+make build-release      # Build release version
+make clean              # Clean build artifacts
+make install            # Install the binary locally
 
-# Run linting
-cargo clippy
+# Testing
+make test               # Run all tests
+make test-integration   # Run integration tests  
+make test-watch         # Run tests in watch mode (requires cargo-watch)
+make demo               # Run a quick demo of the tool
 
-# Format code
-cargo fmt
+# Code quality
+make format             # Format code with rustfmt
+make format-check       # Check code formatting
+make lint               # Run clippy lints
+make check              # Run all code quality checks (format + lint)
 
-# Run the application
-cargo run -- [command]
+# Documentation
+make docs               # Generate documentation
+make docs-open          # Generate and open documentation
+make serve-docs         # Serve documentation locally
 
-# Build release version
-cargo build --release
+# Security and SBOM
+make security           # Run comprehensive security scans
+make sbom               # Generate Software Bill of Materials
+make sbom-snyk          # Generate SBOM and upload to Snyk for scanning
 
-# Generate code coverage
-cargo llvm-cov --all-features --lcov --output-path lcov.info
-# or use the script
-./scripts/coverage.sh
+# CI/CD and validation  
+make validate-workflows # Validate GitHub Actions workflow files
+make ci                 # Run CI pipeline (equivalent to GitHub Actions)
+make all                # Run comprehensive build pipeline
+make release-check      # Check if ready for release
 
-# Run security scans
-./scripts/security-scan.sh
-
-# Generate SBOM (Software Bill of Materials)
-./scripts/generate-sbom.sh
-./scripts/generate-sbom.sh --formats cyclonedx --snyk  # Generate and scan with Snyk
-
-# Individual security tools (if installed)
-cargo audit              # Dependency vulnerabilities
-snyk test               # Snyk open source scan
-snyk code test          # Snyk code analysis
+# Development helpers
+make watch              # Watch for changes and run tests
+make env                # Show environment information
+make run ARGS="--help"  # Run the application with arguments
 ```
+
+### Legacy Scripts (Replaced by Makefile)
+
+The following scripts have been replaced by Makefile targets:
+- `scripts/coverage.sh` → `make coverage`
+- `scripts/security-scan.sh` → `make security`
+- `scripts/validate-workflows.sh` → `make validate-workflows`
+- `scripts/generate-sbom.sh` → `make sbom`
 
 ## CLI Usage Examples
 

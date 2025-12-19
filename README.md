@@ -99,6 +99,33 @@ The change that we're proposing...
 What becomes easier or more difficult...
 ```
 
+## Development
+
+This project includes a comprehensive Makefile for development workflows:
+
+```bash
+# Setup development environment  
+make setup              # Install all dependencies and tools
+
+# Build and test
+make build              # Build the project
+make test               # Run tests
+make check              # Run code quality checks (format + lint)
+make all                # Run comprehensive build pipeline
+
+# Security and SBOM
+make security           # Run comprehensive security scans
+make sbom               # Generate Software Bill of Materials
+make sbom-snyk          # Generate SBOM and upload to Snyk for scanning
+
+# Development helpers
+make demo               # Run a quick demo of the tool
+make watch              # Watch for changes and run tests
+make help               # Show all available targets
+```
+
+For a complete list of available commands, run `make help`.
+
 ## Security & SBOM
 
 This project includes comprehensive security scanning and Software Bill of Materials (SBOM) generation:
@@ -108,20 +135,17 @@ This project includes comprehensive security scanning and Software Bill of Mater
 Generate SBOM files for supply chain security analysis:
 
 ```bash
-# Generate all SBOM formats
-./scripts/generate-sbom.sh
-
-# Generate specific formats
-./scripts/generate-sbom.sh --formats cyclonedx,spdx
+# Generate all SBOM formats using Makefile
+make sbom
 
 # Generate and upload to Snyk for scanning
-./scripts/generate-sbom.sh --snyk
+make sbom-snyk
 
-# Custom output directory
-./scripts/generate-sbom.sh --output /path/to/sbom-files
+# Or use the standalone script (legacy)
+./scripts/generate-sbom.sh --formats cyclonedx,spdx --output ./sbom-files
 ```
 
-The script generates SBOM files in multiple formats:
+The SBOM generation creates files in multiple formats:
 - **CycloneDX JSON** - Industry standard format, preferred by Snyk
 - **SPDX JSON** - Linux Foundation standard
 - **Syft JSON** - Anchore's comprehensive format
