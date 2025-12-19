@@ -22,7 +22,7 @@ help: ## Show this help message
 	@echo "  make setup          # Install dependencies and tools"
 	@echo "  make ci             # Run CI pipeline (PR validation)"
 	@echo "  make cd             # Run CD pipeline (full security)"
-	@echo "  make test-watch     # Run tests in watch mode"
+	@echo "  make prepare-release VERSION=1.0.0  # Prepare for release"
 	@echo "  make sbom           # Generate Software Bill of Materials"
 	@echo ""
 
@@ -452,6 +452,31 @@ serve-docs: docs ## Serve documentation locally (requires basic HTTP server)
 	else \
 		printf "\033[0;31m❌ No HTTP server available. Install python3 or ruby\033[0m\n"; \
 	fi
+
+set-version: ## Set version in Cargo.toml (usage: make set-version VERSION=1.0.0)
+	@if [ -z "$(VERSION)" ]; then \
+		printf "\033[0;31m❌ VERSION parameter required. Usage: make set-version VERSION=1.0.0\033[0m\n"; \
+		exit 1; \
+	fi
+	@printf "\033[1m\033[34m===> Setting version to $(VERSION)\033[0m\n"
+	@current_version=$$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/'); \
+	sed -i 's/^version = ".*"/version = "$(VERSION)"/' Cargo.toml; \
+	new_version=$$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/'); \
+	printf "\033[0;32m✅ Version updated: $$current_version → $$new_version\033[0m\n"
+
+prepare-release: ## Prepare for release (usage: make prepare-release VERSION=1.0.0)
+	@if [ -z "$(VERSION)" ]; then \
+		printf "\033[0;31m❌ VERSION parameter required. Usage: make prepare-release VERSION=1.0.0\033[0m\n"; \
+		exit 1; \
+	fi
+	@printf "\033[1m\033[34m===> Preparing release $(VERSION)\033[0m\n"
+	@$(MAKE) set-version VERSION=$(VERSION)
+	@$(MAKE) all
+	@printf "\033[0;34mℹ️  Release preparation completed. Next steps:\033[0m\n"
+	@printf "\033[0;34m  1. Review changes: git diff\033[0m\n"
+	@printf "\033[0;34m  2. Commit version: git add Cargo.toml && git commit -m \"Bump version to $(VERSION)\"\033[0m\n"
+	@printf "\033[0;34m  3. Create tag: git tag v$(VERSION)\033[0m\n"
+	@printf "\033[0;34m  4. Push: git push origin trunk --tags\033[0m\n"
 
 env: ## Show environment information
 	@printf "\033[1m\033[34m===> Environment Information\033[0m\n"

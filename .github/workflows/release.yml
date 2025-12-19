@@ -35,17 +35,36 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Validate version consistency
+      - name: Validate and update version
+        id: validate-version
         run: |
           tag_version="${{ steps.get_version.outputs.version }}"
           cargo_version=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           
-          if [[ "$tag_version" != "$cargo_version" ]]; then
-            echo "❌ Version mismatch: tag=$tag_version, Cargo.toml=$cargo_version"
-            exit 1
-          else
+          echo "📋 Version Information:"
+          echo "  Git tag: v$tag_version"
+          echo "  Cargo.toml: $cargo_version"
+          
+          # Update Cargo.toml version to match the release tag
+          echo "🔄 Updating Cargo.toml version to match release tag..."
+          sed -i "s/^version = \".*\"/version = \"$tag_version\"/" Cargo.toml
+          
+          # Verify the update
+          new_cargo_version=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "✅ Cargo.toml version updated: $cargo_version → $new_cargo_version"
+          
+          # Validate that it matches now
+          if [[ "$tag_version" == "$new_cargo_version" ]]; then
             echo "✅ Version consistency validated: $tag_version"
+          else
+            echo "❌ Failed to update version in Cargo.toml"
+            exit 1
           fi
+          
+          # Set outputs for use in other jobs
+          echo "tag_version=$tag_version" >> $GITHUB_OUTPUT
+          echo "original_cargo_version=$cargo_version" >> $GITHUB_OUTPUT
+          echo "updated_cargo_version=$new_cargo_version" >> $GITHUB_OUTPUT
 
       - name: Run release checks
         run: |
@@ -72,7 +91,12 @@ jobs:
           cache-on-failure: true
 
       - name: Build release for SBOM
-        run: cargo build --release
+        run: |
+          echo "🔍 Current Cargo.toml version:"
+          grep '^version = ' Cargo.toml
+          echo ""
+          echo "🏗️ Building release binary for SBOM generation..."
+          cargo build --release
 
       - name: Install SBOM tools
         run: |
@@ -132,6 +156,10 @@ jobs:
             
             Architecture Decision Records (ADR) management tool written in Rust.
             
+            ### Version Information
+            - **Release Version**: v${{ needs.pre-release-validation.outputs.version }}
+            - **Package Version**: Check Cargo.toml in source
+            
             ### What's Changed
             See [CHANGELOG.md](https://github.com/earelin/adr-tools-alt/blob/trunk/CHANGELOG.md) for detailed changes.
             
@@ -167,18 +195,29 @@ jobs:
             adr-tools-alt generate toc
             ```
             
-            ### Security
+            ### Security & Verification
             - 🔒 All binaries are built in GitHub Actions with full audit trails
             - 📦 SBOM (Software Bill of Materials) files included with release
             - 🛡️ Comprehensive security scanning performed
+            - 🔍 Reproducible builds from tagged source code
             
-            ### Verification
-            The release includes SBOM files for supply chain verification:
+            ### Supply Chain Security
+            This release includes SBOM files for supply chain verification:
             - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-sbom.json` (CycloneDX format)
-            - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-spdx.json` (SPDX format)
+            - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-spdx.json` (SPDX format)  
             - `adr-tools-alt-v${{ needs.pre-release-validation.outputs.version }}-sbom.txt` (Human-readable)
+            
+            ### Platform Support
+            This release provides binaries for:
+            - Linux x86_64 (glibc and musl)
+            - Windows x86_64  
+            - macOS x86_64 and Apple Silicon (ARM64)
+            
+            ---
+            
+            **Need help?** Check our [documentation](https://github.com/earelin/adr-tools-alt/blob/trunk/README.md) or [open an issue](https://github.com/earelin/adr-tools-alt/issues).
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref, '-') }}
 
       - name: Upload SBOM Files to Release
         run: |
@@ -290,6 +329,11 @@ jobs:
           echo "- 🔒 Full security validation performed" >> $GITHUB_STEP_SUMMARY
           echo "- 📚 Complete documentation included" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Version Information:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release Tag**: v${{ needs.pre-release-validation.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Version**: Cargo.toml updated to match release tag" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pre-release**: ${{ contains(github.ref, '-') && 'Yes' || 'No' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔗 Links:" >> $GITHUB_STEP_SUMMARY
           echo "- [Release Page](https://github.com/earelin/adr-tools-alt/releases/tag/v${{ needs.pre-release-validation.outputs.version }})" >> $GITHUB_STEP_SUMMARY
           echo "- [Installation Guide](https://github.com/earelin/adr-tools-alt#installation)" >> $GITHUB_STEP_SUMMARY
@@ -299,6 +343,8 @@ jobs:
           echo "1. Update package registries (if applicable)" >> $GITHUB_STEP_SUMMARY
           echo "2. Announce the release" >> $GITHUB_STEP_SUMMARY
           echo "3. Update documentation sites" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note**: Cargo.toml version was automatically updated to match the release tag during build."
 
       - name: Trigger follow-up workflows
         run: |
